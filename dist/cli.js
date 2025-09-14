@@ -3,56 +3,48 @@ import { Command } from 'commander';
 import { config as loadEnv } from 'dotenv';
 import { identityFromPemFile } from './identity.js';
 import { addTrustedAwarder, awardRep, getBalance } from './client.js';
-loadEnv(); // allows REPDAO_PEM=... in .env
-const program = new Command()
+loadEnv();
+const program = new Command();
+program
     .name('repdao')
-    .description('Reputation DAO CLI (no dfx runtime)')
-    .version('0.1.0');
-function resolveIdentity(pemPath) {
-    const pem = process.env.REPDAO_PEM;
-    if (pemPath)
-        return identityFromPemFile(pemPath);
-    if (pem)
-        return identityFromPemFile(pem);
-    return undefined; // anonymous for queries
-}
+    .description('Reputation DAO CLI wrapper')
+    .option('--network <net>', 'ic | local | custom', process.env.REPDAO_NETWORK ?? 'ic')
+    .option('--host <url>', 'host override (e.g. http://127.0.0.1:4943)')
+    .option('--pem <path>', 'PEM for identity', process.env.REPDAO_PEM);
 program
-    .option('--network <ic|local|host>', 'network or custom host', 'ic')
-    .option('--pem <path>', 'PEM file for identity (owner/trusted awarder)');
-program
-    .command('add-trusted-awarder')
-    .argument('<cid>', 'child canister id')
-    .argument('<awarderPrincipal>', 'principal to trust')
-    .argument('<name>', 'label')
-    .action(async (cid, awarder, name, cmd) => {
+    .command('addTrustedAwarder')
+    .argument('<canisterId>')
+    .argument('<awarderPrincipal>')
+    .argument('<name>')
+    .action(async (cid, awarder, name) => {
     const opts = program.opts();
-    const identity = resolveIdentity(opts.pem);
-    const res = await addTrustedAwarder(cid, awarder, name, { identity, network: opts.network });
+    const identity = opts.pem ? identityFromPemFile(opts.pem) : undefined;
+    const res = await addTrustedAwarder(cid, awarder, name, { identity, network: opts.network, host: opts.host });
     console.log(res);
 });
 program
-    .command('award-rep')
-    .argument('<cid>')
+    .command('awardRep')
+    .argument('<canisterId>')
     .argument('<toPrincipal>')
-    .argument('<amount>', 'Nat')
-    .option('--reason <text>', 'optional reason')
+    .argument('<amount>')
+    .option('-r, --reason <text>')
     .action(async (cid, to, amount, cmd) => {
     const opts = program.opts();
-    const identity = resolveIdentity(opts.pem);
-    const res = await awardRep(cid, to, BigInt(amount), cmd.reason, { identity, network: opts.network });
+    const identity = opts.pem ? identityFromPemFile(opts.pem) : undefined;
+    const { reason } = cmd.opts();
+    const res = await awardRep(cid, to, BigInt(amount), reason, { identity, network: opts.network, host: opts.host });
     console.log(res);
 });
 program
-    .command('get-balance')
-    .argument('<cid>')
+    .command('getBalance')
+    .argument('<canisterId>')
     .argument('<principal>')
     .action(async (cid, p) => {
     const opts = program.opts();
-    const bal = await getBalance(cid, p, { network: opts.network });
+    const bal = await getBalance(cid, p, { network: opts.network, host: opts.host });
     console.log(bal.toString());
 });
 program.parseAsync(process.argv).catch((e) => {
-    console.error(e?.message ?? e);
+    console.error(e);
     process.exit(1);
 });
-//# sourceMappingURL=cli.js.map

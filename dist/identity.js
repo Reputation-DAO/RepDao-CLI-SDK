@@ -7,4 +7,3 @@ export function identityFromPemFile(pemPath) {
 export function identityFromPemString(pem) {
     return Secp256k1KeyIdentity.fromPem(pem);
 }
-//# sourceMappingURL=identity.js.map

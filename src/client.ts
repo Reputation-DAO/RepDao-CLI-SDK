@@ -1,70 +1,68 @@
-import { HttpAgent, Actor } from '@dfinity/agent';
+// src/client.ts
+import { HttpAgent, Actor, type ActorSubclass, type Identity } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
-import type { SignIdentity } from '@dfinity/agent';
 import { idlFactory } from './idl/reputation_dao.did.js';
 
-export type Network = 'ic' | 'local' | string;
-const HOSTS: Record<'ic'|'local', string> = {
-  ic: 'https://ic0.app',
-  local: 'http://127.0.0.1:4943',
+export interface ReputationChildService {
+  addTrustedAwarder: (p: Principal, name: string) => Promise<string>;
+  awardRep: (to: Principal, amount: bigint, reason: [] | [string]) => Promise<string>;
+  getBalance: (p: Principal) => Promise<bigint>;
+}
+
+type ClientOpts = {
+  identity?: Identity;
+  /** "ic" | "local" | custom host selector */
+  network?: string;
+  /** direct host override (e.g. http://127.0.0.1:4943) */
+  host?: string;
 };
 
-function resolveHost(network: Network) {
-  if (network === 'ic') return HOSTS.ic;
-  if (network === 'local') return HOSTS.local;
-  // allow custom boundary host
-  return network;
+function hostFrom(opts: ClientOpts): string {
+  if (opts.host) return opts.host;
+  if ((opts.network ?? 'ic') === 'ic') return 'https://icp-api.io';
+  // defaults to local
+  return 'http://127.0.0.1:4943';
 }
 
-export async function childActor(
-  canisterId: string,
-  opts: { identity?: SignIdentity; network?: Network } = {}
-) {
-  const host = resolveHost(opts.network ?? 'ic');
+export function createActor(canisterId: string, opts: ClientOpts = {}): ActorSubclass<ReputationChildService> {
+  const host = hostFrom(opts);
   const agent = new HttpAgent({ host, identity: opts.identity });
-
-  // Only fetchRootKey for local replica
-  if (host === HOSTS.local) {
-    await agent.fetchRootKey();
+  // fetchRootKey only for local replica; it's a no-op on IC hosts
+  if (host.startsWith('http://')) {
+    // @ts-ignore - present on HttpAgent in node envs
+    agent.fetchRootKey?.();
   }
-
-  return Actor.createActor(idlFactory, { agent, canisterId });
+  return Actor.createActor<ReputationChildService>(idlFactory, { agent, canisterId });
 }
-
-/** ====== HIGH-LEVEL WRAPPERS ====== **/
 
 export async function addTrustedAwarder(
   canisterId: string,
-  awarderPrincipalText: string,
+  awarder: string,
   name: string,
-  opts?: { identity?: SignIdentity; network?: Network }
-) {
-  const actor = await childActor(canisterId, opts);
-  const p = Principal.fromText(awarderPrincipalText);
-  return actor.addTrustedAwarder(p, name);
+  opts: ClientOpts = {}
+): Promise<string> {
+  const actor = createActor(canisterId, opts);
+  return await actor.addTrustedAwarder(Principal.fromText(awarder), name);
 }
 
 export async function awardRep(
   canisterId: string,
-  toPrincipalText: string,
-  amount: bigint | number,
+  to: string,
+  amount: bigint,
   reason?: string,
-  opts?: { identity?: SignIdentity; network?: Network }
-) {
-  const actor = await childActor(canisterId, opts);
-  const to = Principal.fromText(toPrincipalText);
-  const amt = typeof amount === 'number' ? BigInt(amount) : amount;
-  return actor.awardRep(to, amt, reason ?? []);
+  opts: ClientOpts = {}
+): Promise<string> {
+  const actor = createActor(canisterId, opts);
+  const reasonOpt: [] | [string] = reason ? [reason] : [];
+  return await actor.awardRep(Principal.fromText(to), amount, reasonOpt);
 }
 
 export async function getBalance(
   canisterId: string,
   principalText: string,
-  opts?: { identity?: SignIdentity; network?: Network }
+  opts: ClientOpts = {}
 ): Promise<bigint> {
-  const actor = await childActor(canisterId, opts);
-  return actor.getBalance(Principal.fromText(principalText));
+  const actor = createActor(canisterId, opts);
+  const res = await actor.getBalance(Principal.fromText(principalText));
+  return res; // bigint
 }
-
-/* Add more thin wrappers the same way:
-   - removeTrustedAwarder, revokeRep, setDailyMintLimit, leaderboard, etc. */
