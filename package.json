@@ -1,0 +1,41 @@
+{
+  "name": "@reputationdao/client",
+  "version": "0.1.0",
+  "description": "Reputation DAO JS client + CLI wrapper (no dfx runtime)",
+  "type": "module",
+  "main": "dist/client.js",
+  "exports": {
+    ".": {
+      "import": "./dist/client.js"
+    }
+  },
+  "bin": {
+    "repdao": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "node --loader ts-node/esm src/cli.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "files": [
+    "dist",
+    "src/idl/reputationchild.did.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@dfinity/agent": "^2.0.0",
+    "@dfinity/identity-secp256k1": "^2.0.0",
+    "@dfinity/principal": "^2.0.0",
+    "commander": "^12.0.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "@types/commander": "^2.12.5",
+    "@types/node": "^20.10.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.2"
+  },
+  "engines": { "node": ">=18" },
+  "license": "MIT"
+}

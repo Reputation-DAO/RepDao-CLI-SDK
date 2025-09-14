@@ -1,0 +1,11 @@
+import { Secp256k1KeyIdentity } from '@dfinity/identity-secp256k1';
+import { readFileSync } from 'fs';
+
+export function identityFromPemFile(pemPath: string) {
+  const pem = readFileSync(pemPath, 'utf8');
+  return Secp256k1KeyIdentity.fromPem(pem);
+}
+
+export function identityFromPemString(pem: string) {
+  return Secp256k1KeyIdentity.fromPem(pem);
+}
