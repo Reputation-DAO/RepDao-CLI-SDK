@@ -1,1 +1,1 @@
-Ahh a basic DFX caller wrapper with repdao brancd and API package for repDao
+Ahh a basic DFX caller wrapper with repdao brand and API package for repDao
