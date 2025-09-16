@@ -27,6 +27,13 @@ import { Secp256k1KeyIdentity } from '@dfinity/identity-secp256k1';
 import { Principal } from '@dfinity/principal';
 import { readFileSync } from 'node:fs';
 
+
+// ---- Candid helpers ----
+// For Candid `opt text`: use [] for null, ["value"] for some.
+function OptText(s?: string | null): [] | [string] {
+  return s == null ? [] : [String(s)];
+}
+
 /* -----------------------------------------------------------------------------
    Setup
 ----------------------------------------------------------------------------- */
@@ -99,35 +106,49 @@ program
   .argument('<toPrincipal>')
   .argument('<amount>')
   .option('-r, --reason <text>')
-  .action(async (cid: string, to: string, amount: string, cmd: Command) => {
-    const { reason } = cmd.opts<{ reason?: string }>();
+  .action(async (...args: any[]) => {
+    const cmd = args[args.length - 1];               // Commander Command
+    const [cid, to, amount] = args.slice(0, -1);     // positionals
+    const opts = cmd.opts() as { reason?: string };  // ✅ no generic error
+    const { reason } = opts;
+
     const res = await awardRep(cid, to, N(amount), reason, optsWithIdentity());
     console.log(res);
   });
+
+
 
 program
   .command('multiAward')
   .argument('<canisterId>')
   .requiredOption('--pairs <json>', 'JSON: [[toPrincipal, amount, reason?], ...]')
   .option('--atomic', 'fail all if any invalid', false)
-  .action(async (cid: string, cmd: Command) => {
-    const { pairs, atomic } = cmd.opts<{ pairs: string; atomic?: boolean }>();
-    let arr: any[];
+  .action(async (...args: unknown[]) => {
+    const cmd = args[args.length - 1] as Command;
+    const [cid] = args.slice(0, -1) as [string];
+
+    const { pairs, atomic } = cmd.opts() as { pairs: string; atomic?: boolean };
+
+    let arr: unknown[];
     try {
       arr = JSON.parse(pairs);
     } catch {
       throw new Error('Invalid JSON for --pairs');
     }
+
     const mapped = arr.map((t, i) => {
-      if (!Array.isArray(t) || (t.length < 2 || t.length > 3)) {
+      if (!Array.isArray(t) || t.length < 2 || t.length > 3) {
         throw new Error(`pairs[${i}] must be [principal, amount, ?reason]`);
       }
-      const [to, amt, reason] = t;
-      return [P(String(to)), N(String(amt)), reason == null ? null : String(reason)];
+      const [to, amt, reason] = t as [unknown, unknown, unknown?];
+      return [P(String(to)), N(String(amt)), OptText(reason as string | undefined)];
     });
+
     const res = await invokeUpdate(cid, 'multiAward', [mapped, !!atomic], optsWithIdentity());
     console.log(res);
   });
+
+
 
 program
   .command('revokeRep')
@@ -135,32 +156,42 @@ program
   .argument('<fromPrincipal>')
   .argument('<amount>')
   .option('-r, --reason <text>')
-  .action(async (cid: string, from: string, amount: string, cmd: Command) => {
-    const { reason } = cmd.opts<{ reason?: string }>();
+  .action(async (...args: unknown[]) => {
+    const cmd = args[args.length - 1] as Command;
+    const [cid, from, amount] = args.slice(0, -1) as [string, string, string];
+    const { reason } = cmd.opts() as { reason?: string };
+
     const res = await invokeUpdate(
       cid,
       'revokeRep',
-      [P(from), N(amount), reason == null ? null : String(reason)],
+      [P(from), N(amount), OptText(reason)],
       optsWithIdentity()
     );
     console.log(res);
   });
+
+
 
 program
   .command('resetUser')
   .argument('<canisterId>')
   .argument('<userPrincipal>')
   .option('-r, --reason <text>')
-  .action(async (cid: string, user: string, cmd: Command) => {
-    const { reason } = cmd.opts<{ reason?: string }>();
+  .action(async (...args: unknown[]) => {
+    const cmd = args[args.length - 1] as Command;
+    const [cid, user] = args.slice(0, -1) as [string, string];
+    const { reason } = cmd.opts() as { reason?: string };
+
     const res = await invokeUpdate(
       cid,
       'resetUser',
-      [P(user), reason == null ? null : String(reason)],
+      [P(user), OptText(reason)],
       optsWithIdentity()
     );
     console.log(res);
   });
+
+
 
 /** Admin / policy */
 program
@@ -280,10 +311,12 @@ program
 program
   .command('triggerManualDecay')
   .argument('<canisterId>')
-  .action(async (cid: string) => {
+  .action(async (...args: unknown[]) => {
+    const [cid] = args.slice(0, -1) as [string];
     const res = await invokeUpdate(cid, 'triggerManualDecay', [], optsWithIdentity());
     console.log(res);
   });
+
 
 /** Cycles */
 program
@@ -313,14 +346,19 @@ program
   .argument('[payload]')
   .option('--b64', 'payload is base64', false)
   .option('--hex', 'payload is hex', false)
-  .action(async (cid: string, kind: string, payload: string | undefined, cmd: Command) => {
-    const { b64, hex } = cmd.opts<{ b64?: boolean; hex?: boolean }>();
+  .action(async (...args: unknown[]) => {
+    const cmd = args[args.length - 1] as Command;
+    const [cid, kind, payload] = args.slice(0, -1) as [string, string, string?];
+
+    const { b64, hex } = cmd.opts() as { b64?: boolean; hex?: boolean };
     let bytes = new Uint8Array();
+
     if (payload != null) {
       if (b64) bytes = new Uint8Array(Buffer.from(payload, 'base64'));
       else if (hex) bytes = new Uint8Array(Buffer.from(payload.replace(/^0x/, ''), 'hex'));
       else bytes = new TextEncoder().encode(payload);
     }
+
     const res = await invokeUpdate(cid, 'emitEvent', [kind, bytes], optsWithIdentity());
     console.log(res);
   });

@@ -7,6 +7,11 @@ import { resolveIdentityPath, list as listIds, listDfxIdentities, use as useId, 
 import { Secp256k1KeyIdentity } from '@dfinity/identity-secp256k1';
 import { Principal } from '@dfinity/principal';
 import { readFileSync } from 'node:fs';
+// ---- Candid helpers ----
+// For Candid `opt text`: use [] for null, ["value"] for some.
+function OptText(s) {
+    return s == null ? [] : [String(s)];
+}
 /* -----------------------------------------------------------------------------
    Setup
 ----------------------------------------------------------------------------- */
@@ -74,8 +79,11 @@ program
     .argument('<toPrincipal>')
     .argument('<amount>')
     .option('-r, --reason <text>')
-    .action(async (cid, to, amount, cmd) => {
-    const { reason } = cmd.opts();
+    .action(async (...args) => {
+    const cmd = args[args.length - 1]; // Commander Command
+    const [cid, to, amount] = args.slice(0, -1); // positionals
+    const opts = cmd.opts(); // ✅ no generic error
+    const { reason } = opts;
     const res = await awardRep(cid, to, N(amount), reason, optsWithIdentity());
     console.log(res);
 });
@@ -84,7 +92,9 @@ program
     .argument('<canisterId>')
     .requiredOption('--pairs <json>', 'JSON: [[toPrincipal, amount, reason?], ...]')
     .option('--atomic', 'fail all if any invalid', false)
-    .action(async (cid, cmd) => {
+    .action(async (...args) => {
+    const cmd = args[args.length - 1];
+    const [cid] = args.slice(0, -1);
     const { pairs, atomic } = cmd.opts();
     let arr;
     try {
@@ -94,11 +104,11 @@ program
         throw new Error('Invalid JSON for --pairs');
     }
     const mapped = arr.map((t, i) => {
-        if (!Array.isArray(t) || (t.length < 2 || t.length > 3)) {
+        if (!Array.isArray(t) || t.length < 2 || t.length > 3) {
             throw new Error(`pairs[${i}] must be [principal, amount, ?reason]`);
         }
         const [to, amt, reason] = t;
-        return [P(String(to)), N(String(amt)), reason == null ? null : String(reason)];
+        return [P(String(to)), N(String(amt)), OptText(reason)];
     });
     const res = await invokeUpdate(cid, 'multiAward', [mapped, !!atomic], optsWithIdentity());
     console.log(res);
@@ -109,9 +119,11 @@ program
     .argument('<fromPrincipal>')
     .argument('<amount>')
     .option('-r, --reason <text>')
-    .action(async (cid, from, amount, cmd) => {
+    .action(async (...args) => {
+    const cmd = args[args.length - 1];
+    const [cid, from, amount] = args.slice(0, -1);
     const { reason } = cmd.opts();
-    const res = await invokeUpdate(cid, 'revokeRep', [P(from), N(amount), reason == null ? null : String(reason)], optsWithIdentity());
+    const res = await invokeUpdate(cid, 'revokeRep', [P(from), N(amount), OptText(reason)], optsWithIdentity());
     console.log(res);
 });
 program
@@ -119,9 +131,11 @@ program
     .argument('<canisterId>')
     .argument('<userPrincipal>')
     .option('-r, --reason <text>')
-    .action(async (cid, user, cmd) => {
+    .action(async (...args) => {
+    const cmd = args[args.length - 1];
+    const [cid, user] = args.slice(0, -1);
     const { reason } = cmd.opts();
-    const res = await invokeUpdate(cid, 'resetUser', [P(user), reason == null ? null : String(reason)], optsWithIdentity());
+    const res = await invokeUpdate(cid, 'resetUser', [P(user), OptText(reason)], optsWithIdentity());
     console.log(res);
 });
 /** Admin / policy */
@@ -221,7 +235,8 @@ program
 program
     .command('triggerManualDecay')
     .argument('<canisterId>')
-    .action(async (cid) => {
+    .action(async (...args) => {
+    const [cid] = args.slice(0, -1);
     const res = await invokeUpdate(cid, 'triggerManualDecay', [], optsWithIdentity());
     console.log(res);
 });
@@ -251,7 +266,9 @@ program
     .argument('[payload]')
     .option('--b64', 'payload is base64', false)
     .option('--hex', 'payload is hex', false)
-    .action(async (cid, kind, payload, cmd) => {
+    .action(async (...args) => {
+    const cmd = args[args.length - 1];
+    const [cid, kind, payload] = args.slice(0, -1);
     const { b64, hex } = cmd.opts();
     let bytes = new Uint8Array();
     if (payload != null) {
