@@ -14,7 +14,7 @@ export type ClientOptions = {
   host?: string; // explicit host override
 };
 
-type Opt<T> = [] | [T];
+export type Opt<T> = [] | [T];
 export type BigNumberish = bigint | number | string;
 
 /** Narrow TS views of common query results (raw candid values still fine). */
@@ -33,6 +33,65 @@ export type DecayConfig = {
   minThreshold: bigint;
   gracePeriod: bigint;
   enabled: boolean;
+};
+
+export type TransactionType = { Award: null } | { Revoke: null } | { Decay: null };
+
+export type Transaction = {
+  id: bigint;
+  transactionType: TransactionType;
+  from: Principal;
+  to: Principal;
+  amount: bigint;
+  timestamp: bigint;
+  reason: Opt<string>;
+};
+
+export type UserDecayInfo = {
+  lastActivityTime: bigint;
+  totalDecayed: bigint;
+  lastDecayTime: bigint;
+  registrationTime: bigint;
+};
+
+export type BalanceDetails = {
+  rawBalance: bigint;
+  currentBalance: bigint;
+  pendingDecay: bigint;
+  decayInfo: UserDecayInfo | null;
+};
+
+export type DecayStatistics = {
+  totalDecayedPoints: bigint;
+  lastGlobalDecayProcess: bigint;
+  configEnabled: boolean;
+};
+
+export type MyStats = {
+  balance: bigint;
+  lifetimeAwarded: bigint;
+  lifetimeRevoked: bigint;
+  totalDecayed: bigint;
+  lastActivity: bigint;
+};
+
+export type OrgPulse = {
+  awards: bigint;
+  revokes: bigint;
+  decays: bigint;
+};
+
+export type TopUp = {
+  id: bigint;
+  from: Principal;
+  amount: bigint;
+  timestamp: bigint;
+};
+
+export type AwarderStatsRow = {
+  awarder: Principal;
+  total: bigint;
+  lastAward: bigint;
 };
 
 /* -----------------------------------------------------------------------------
@@ -83,6 +142,7 @@ const N = (x: BigNumberish) =>
   typeof x === 'bigint' ? x : typeof x === 'number' ? BigInt(Math.floor(x)) : BigInt(x);
 const B = (x: string | boolean) => (typeof x === 'boolean' ? x : x === 'true');
 const Opt = <T,>(val?: T | null): Opt<T> => (val == null ? [] : [val]);
+const fromOpt = <T>(opt: Opt<T>): T | null => (opt.length === 0 ? null : opt[0]);
 
 async function _call(
   kind: 'query' | 'update',
@@ -238,6 +298,12 @@ export const withdrawCycles = (
   opts?: ClientOptions
 ) => u(cid, 'withdrawCycles', [P(to), N(amount)], opts) as Promise<string>;
 
+export const returnCyclesToFactory = (
+  cid: string,
+  minRemain: BigNumberish,
+  opts?: ClientOptions
+) => u(cid, 'returnCyclesToFactory', [N(minRemain)], opts) as Promise<bigint>;
+
 /** DX events */
 export const emitEvent = (cid: string, kind: string, payload: Uint8Array, opts?: ClientOptions) =>
   u(cid, 'emitEvent', [kind, payload], opts) as Promise<string>;
@@ -250,27 +316,27 @@ export const getTrustedAwarders = (cid: string, opts?: ClientOptions) =>
   q(cid, 'getTrustedAwarders', [], opts) as Promise<Awarder[]>;
 
 export const getTransactionHistory = (cid: string, opts?: ClientOptions) =>
-  q(cid, 'getTransactionHistory', [], opts) as Promise<any[]>;
+  q(cid, 'getTransactionHistory', [], opts) as Promise<Transaction[]>;
 
 export const getTransactionsPaged = (
   cid: string,
   offset: BigNumberish,
   limit: BigNumberish,
   opts?: ClientOptions
-) => q(cid, 'getTransactionsPaged', [N(offset), N(limit)], opts) as Promise<any[]>;
+) => q(cid, 'getTransactionsPaged', [N(offset), N(limit)], opts) as Promise<Transaction[]>;
 
 export const getTransactionsByUser = (cid: string, user: string, opts?: ClientOptions) =>
-  q(cid, 'getTransactionsByUser', [P(user)], opts) as Promise<any[]>;
+  q(cid, 'getTransactionsByUser', [P(user)], opts) as Promise<Transaction[]>;
 
 export const findTransactionsByReason = (
   cid: string,
   substr: string,
   limit: BigNumberish,
   opts?: ClientOptions
-) => q(cid, 'findTransactionsByReason', [substr, N(limit)], opts) as Promise<any[]>;
+) => q(cid, 'findTransactionsByReason', [substr, N(limit)], opts) as Promise<Transaction[]>;
 
 export const getTransactionById = (cid: string, id: BigNumberish, opts?: ClientOptions) =>
-  q(cid, 'getTransactionById', [N(id)], opts) as Promise<any | null>;
+  q(cid, 'getTransactionById', [N(id)], opts).then((res) => fromOpt(res as Opt<Transaction>));
 
 export const getTransactionCount = (cid: string, opts?: ClientOptions) =>
   q(cid, 'getTransactionCount', [], opts).then((x) => BigInt(x as bigint));
@@ -279,25 +345,29 @@ export const getDecayConfig = (cid: string, opts?: ClientOptions) =>
   q(cid, 'getDecayConfig', [], opts) as Promise<DecayConfig>;
 
 export const getUserDecayInfo = (cid: string, p: string, opts?: ClientOptions) =>
-  q(cid, 'getUserDecayInfo', [P(p)], opts) as Promise<any | null>;
+  q(cid, 'getUserDecayInfo', [P(p)], opts).then((res) => fromOpt(res as Opt<UserDecayInfo>));
 
 export const previewDecayAmount = (cid: string, p: string, opts?: ClientOptions) =>
   q(cid, 'previewDecayAmount', [P(p)], opts).then((x) => BigInt(x as bigint));
 
 export const getBalanceWithDetails = (cid: string, p: string, opts?: ClientOptions) =>
-  q(cid, 'getBalanceWithDetails', [P(p)], opts) as Promise<{
-    rawBalance: bigint;
-    currentBalance: bigint;
-    pendingDecay: bigint;
-    decayInfo: any | null;
-  }>;
+  q(cid, 'getBalanceWithDetails', [P(p)], opts).then((res) => {
+    const details = res as {
+      rawBalance: bigint;
+      currentBalance: bigint;
+      pendingDecay: bigint;
+      decayInfo: Opt<UserDecayInfo>;
+    };
+    return {
+      rawBalance: details.rawBalance,
+      currentBalance: details.currentBalance,
+      pendingDecay: details.pendingDecay,
+      decayInfo: fromOpt(details.decayInfo),
+    } satisfies BalanceDetails;
+  });
 
 export const getDecayStatistics = (cid: string, opts?: ClientOptions) =>
-  q(cid, 'getDecayStatistics', [], opts) as Promise<{
-    totalDecayedPoints: bigint;
-    lastGlobalDecayProcess: bigint;
-    configEnabled: boolean;
-  }>;
+  q(cid, 'getDecayStatistics', [], opts) as Promise<DecayStatistics>;
 
 export const leaderboard = (
   cid: string,
@@ -307,32 +377,20 @@ export const leaderboard = (
 ) => q(cid, 'leaderboard', [N(top), N(offset)], opts) as Promise<Array<[Principal, bigint]>>;
 
 export const myStats = (cid: string, user: string, opts?: ClientOptions) =>
-  q(cid, 'myStats', [P(user)], opts) as Promise<{
-    balance: bigint;
-    lifetimeAwarded: bigint;
-    lifetimeRevoked: bigint;
-    totalDecayed: bigint;
-    lastActivity: bigint;
-  }>;
+  q(cid, 'myStats', [P(user)], opts) as Promise<MyStats>;
 
 export const awarderStats = (cid: string, awardee: string, opts?: ClientOptions) =>
-  q(cid, 'awarderStats', [P(awardee)], opts) as Promise<
-    Array<{ awarder: Principal; total: bigint; lastAward: bigint }>
-  >;
+  q(cid, 'awarderStats', [P(awardee)], opts) as Promise<AwarderStatsRow[]>;
 
 export const orgPulse = (cid: string, sinceSec: BigNumberish, opts?: ClientOptions) =>
-  q(cid, 'orgPulse', [N(sinceSec)], opts) as Promise<{
-    awards: bigint;
-    revokes: bigint;
-    decays: bigint;
-  }>;
+  q(cid, 'orgPulse', [N(sinceSec)], opts) as Promise<OrgPulse>;
 
 export const getTopUpsPaged = (
   cid: string,
   offset: BigNumberish,
   limit: BigNumberish,
   opts?: ClientOptions
-) => q(cid, 'getTopUpsPaged', [N(offset), N(limit)], opts) as Promise<any[]>;
+) => q(cid, 'getTopUpsPaged', [N(offset), N(limit)], opts) as Promise<TopUp[]>;
 
 export const getTopUpCount = (cid: string, opts?: ClientOptions) =>
   q(cid, 'getTopUpCount', [], opts).then((x) => BigInt(x as bigint));
@@ -348,3 +406,10 @@ export const cycles_balance = (cid: string, opts?: ClientOptions) =>
 
 export const snapshotHash = (cid: string, opts?: ClientOptions) =>
   q(cid, 'snapshotHash', [], opts).then((x) => BigInt(x as bigint));
+
+// Missing Event queries (events are stored but no query functions exposed in backend)
+// These would need to be added to the backend first
+
+// Missing: getEvents, getEventsPaged, getEventsByKind
+// The backend stores events but doesn't expose query functions for them
+// This is a backend limitation, not SDK limitation

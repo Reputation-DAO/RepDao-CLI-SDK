@@ -44,6 +44,7 @@ const P = (txt) => Principal.fromText(txt);
 const N = (x) => typeof x === 'bigint' ? x : typeof x === 'number' ? BigInt(Math.floor(x)) : BigInt(x);
 const B = (x) => (typeof x === 'boolean' ? x : x === 'true');
 const Opt = (val) => (val == null ? [] : [val]);
+const fromOpt = (opt) => (opt.length === 0 ? null : opt[0]);
 async function _call(kind, canisterId, method, args, opts) {
     const actor = await makeActor(canisterId, opts);
     const fn = actor[method];
@@ -98,6 +99,7 @@ export const triggerManualDecay = (cid, opts) => u(cid, 'triggerManualDecay', []
 /** Cycles */
 export const topUp = (cid, opts) => u(cid, 'topUp', [], opts);
 export const withdrawCycles = (cid, to, amount, opts) => u(cid, 'withdrawCycles', [P(to), N(amount)], opts);
+export const returnCyclesToFactory = (cid, minRemain, opts) => u(cid, 'returnCyclesToFactory', [N(minRemain)], opts);
 /** DX events */
 export const emitEvent = (cid, kind, payload, opts) => u(cid, 'emitEvent', [kind, payload], opts);
 /** Queries */
@@ -107,12 +109,20 @@ export const getTransactionHistory = (cid, opts) => q(cid, 'getTransactionHistor
 export const getTransactionsPaged = (cid, offset, limit, opts) => q(cid, 'getTransactionsPaged', [N(offset), N(limit)], opts);
 export const getTransactionsByUser = (cid, user, opts) => q(cid, 'getTransactionsByUser', [P(user)], opts);
 export const findTransactionsByReason = (cid, substr, limit, opts) => q(cid, 'findTransactionsByReason', [substr, N(limit)], opts);
-export const getTransactionById = (cid, id, opts) => q(cid, 'getTransactionById', [N(id)], opts);
+export const getTransactionById = (cid, id, opts) => q(cid, 'getTransactionById', [N(id)], opts).then((res) => fromOpt(res));
 export const getTransactionCount = (cid, opts) => q(cid, 'getTransactionCount', [], opts).then((x) => BigInt(x));
 export const getDecayConfig = (cid, opts) => q(cid, 'getDecayConfig', [], opts);
-export const getUserDecayInfo = (cid, p, opts) => q(cid, 'getUserDecayInfo', [P(p)], opts);
+export const getUserDecayInfo = (cid, p, opts) => q(cid, 'getUserDecayInfo', [P(p)], opts).then((res) => fromOpt(res));
 export const previewDecayAmount = (cid, p, opts) => q(cid, 'previewDecayAmount', [P(p)], opts).then((x) => BigInt(x));
-export const getBalanceWithDetails = (cid, p, opts) => q(cid, 'getBalanceWithDetails', [P(p)], opts);
+export const getBalanceWithDetails = (cid, p, opts) => q(cid, 'getBalanceWithDetails', [P(p)], opts).then((res) => {
+    const details = res;
+    return {
+        rawBalance: details.rawBalance,
+        currentBalance: details.currentBalance,
+        pendingDecay: details.pendingDecay,
+        decayInfo: fromOpt(details.decayInfo),
+    };
+});
 export const getDecayStatistics = (cid, opts) => q(cid, 'getDecayStatistics', [], opts);
 export const leaderboard = (cid, top, offset, opts) => q(cid, 'leaderboard', [N(top), N(offset)], opts);
 export const myStats = (cid, user, opts) => q(cid, 'myStats', [P(user)], opts);
@@ -124,3 +134,8 @@ export const version = (cid, opts) => q(cid, 'version', [], opts);
 export const health = (cid, opts) => q(cid, 'health', [], opts);
 export const cycles_balance = (cid, opts) => q(cid, 'cycles_balance', [], opts).then((x) => BigInt(x));
 export const snapshotHash = (cid, opts) => q(cid, 'snapshotHash', [], opts).then((x) => BigInt(x));
+// Missing Event queries (events are stored but no query functions exposed in backend)
+// These would need to be added to the backend first
+// Missing: getEvents, getEventsPaged, getEventsByKind
+// The backend stores events but doesn't expose query functions for them
+// This is a backend limitation, not SDK limitation

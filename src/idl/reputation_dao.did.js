@@ -173,6 +173,7 @@ export const idlFactory = ({ IDL }) => {
     'pause' : IDL.Func([IDL.Bool], [IDL.Text], []),
     'previewDecayAmount' : IDL.Func([IDL.Principal], [IDL.Nat], ['query']),
     'processBatchDecay' : IDL.Func([], [IDL.Text], []),
+    'returnCyclesToFactory' : IDL.Func([IDL.Nat], [IDL.Nat], []),
     'removeTrustedAwarder' : IDL.Func([IDL.Principal], [IDL.Text], []),
     'resetUser' : IDL.Func([IDL.Principal, IDL.Opt(IDL.Text)], [IDL.Text], []),
     'revokeRep' : IDL.Func(

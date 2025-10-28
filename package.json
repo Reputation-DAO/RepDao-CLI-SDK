@@ -1,27 +1,90 @@
 {
   "name": "repdao",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Reputation DAO JS client + CLI wrapper (no dfx runtime)",
   "type": "module",
   "main": "dist/client.js",
+  "types": "dist/client.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/client.d.ts",
       "import": "./dist/client.js"
-    }
+    },
+    "./identity": {
+      "types": "./dist/identity.d.ts",
+      "import": "./dist/identity.js"
+    },
+    "./identityStore": {
+      "types": "./dist/identityStore.d.ts",
+      "import": "./dist/identityStore.js"
+    },
+    "./analytics": {
+      "types": "./dist/analytics.d.ts",
+      "import": "./dist/analytics.js"
+    },
+    "./monitor": {
+      "types": "./dist/monitor.d.ts",
+      "import": "./dist/monitor.js"
+    },
+    "./events": {
+      "types": "./dist/events.d.ts",
+      "import": "./dist/events.js"
+    },
+    "./insights": {
+      "types": "./dist/insights.d.ts",
+      "import": "./dist/insights.js"
+    },
+    "./cli": {
+      "types": "./dist/cli.d.ts",
+      "import": "./dist/cli.js"
+    },
+    "./package.json": "./package.json"
   },
   "bin": {
     "repdao": "dist/cli.js"
   },
   "scripts": {
     "build": "tsc",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "dev": "node --loader ts-node/esm src/cli.ts",
-    "prepublishOnly": "npm run build"
+    "lint": "tsc --noEmit",
+    "test": "npm run build && node --test tests/public-api.test.mjs",
+    "check": "npm run lint && npm run test",
+    "prepublishOnly": "npm run build",
+    "setup": "node dist/setup.js",
+    "wizard": "node dist/wizard.js",
+    "postinstall": "node src/postinstall.js || true"
   },
   "files": [
     "dist",
     "src/idl/reputationchild.did.js",
+    "examples",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md"
+  ],
+  "keywords": [
+    "dfinity",
+    "internet-computer",
+    "icp",
+    "dao",
+    "reputation",
+    "sdk",
+    "cli"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/reputation-dao/repdao.git"
+  },
+  "bugs": {
+    "url": "https://github.com/reputation-dao/repdao/issues"
+  },
+  "homepage": "https://github.com/reputation-dao/repdao#readme",
+  "author": "Ayush Kumar Gaur <ayush@example.com>",
+  "contributors": [
+    "Reputation DAO Contributors"
   ],
   "dependencies": {
     "@dfinity/agent": "3.2.4",

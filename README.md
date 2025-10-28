@@ -1,214 +1,340 @@
-````markdown
 # repdao
 
-Reputation DAO JS **Client + CLI**.  
-Use it as a **global CLI tool** for interacting with your deployed canisters, or import it as a **TypeScript/JavaScript SDK** in your projects. No `dfx` runtime required.
+> 🚀 **The Ultimate Reputation DAO SDK + CLI** - So easy, even your grandma can use it!
+
+`repdao` is the most user-friendly way to interact with Reputation DAO canisters. Whether you're a developer building apps or a community manager awarding points, we've got you covered.
+
+## ✨ Features
+
+- 🎯 **Dead Simple CLI** - Interactive wizards and helpful error messages
+- 🔌 **Fully Typed SDK** - Promise-based wrappers with TypeScript support
+- 🧙 **Setup Wizard** - Get started in 30 seconds
+- 🪪 **Identity Management** - Works with dfx or standalone
+- 📊 **Rich Output** - Beautiful formatting and helpful status messages
+- ⚡ **Smart Defaults** - Remembers your settings
+- 🛡️ **Bulletproof** - Comprehensive error handling and validation
 
 ---
 
-## 📦 Installation
+## 🚀 Quick Start
 
-### CLI (global install)
-
+### 1. Install globally
 ```bash
-npm i -g repdao
-repdao --help
-````
-
-This makes the `repdao` command available globally.
-
-### API (project dependency)
-
-```bash
-npm i repdao
+npm install -g repdao
 ```
 
-Then import in code:
+### 2. Run setup wizard
+```bash
+repdao setup
+```
 
-```ts
-import { awardRep, getBalance, health } from 'repdao';
+### 3. Start using it!
+```bash
+# Interactive command builder
+repdao wizard
+
+# Check canister health
+repdao health
+
+# Award points
+repdao awardRep <canister-id> <user-principal> 100 --reason "Great contribution!"
+```
+
+---
+
+## 🧙 Interactive Mode
+
+Never remember command syntax again! Use our interactive wizards:
+
+```bash
+# First-time setup
+repdao setup
+
+# Interactive command builder
+repdao wizard
+```
+
+The wizard walks you through common tasks:
+- 🎯 Award reputation points
+- 💰 Check balances
+- 🏆 View leaderboards
+- 👥 Manage trusted awarders
+- 🏥 Check canister health
+- ⚙️ Configure decay settings
+
+---
+
+## 📖 Common Commands
+
+### Award Points
+```bash
+# Basic award
+repdao awardRep <canister-id> <user> 100
+
+# With reason
+repdao awardRep <canister-id> <user> 100 --reason "Excellent work!"
+
+# Using default canister (set in config)
+repdao awardRep <user> 100 --reason "Great job!"
+```
+
+### Check Balances
+```bash
+# Check someone's balance
+repdao getBalance <canister-id> <user>
+
+# Check your own stats
+repdao myStats <canister-id> <your-principal>
+```
+
+### Leaderboard
+```bash
+# Top 10 users
+repdao leaderboard <canister-id> 10 0
+
+# Top 20, starting from position 10
+repdao leaderboard <canister-id> 20 10
+```
+
+### Canister Health
+```bash
+# Detailed health check
+repdao health <canister-id>
+```
+
+### Identity Management
+```bash
+# Create new identity
+repdao id:new admin
+
+# List all identities
+repdao id:list
+
+# Switch identity
+repdao id:use admin
+
+# Import from file
+repdao id:import partner ./partner.pem
+
+# Sync with dfx
+repdao id:sync
+```
+
+---
+
+## ⚙️ Configuration
+
+### Config File: `~/.repdao/config.json`
+```json
+{
+  "network": "ic",
+  "canisterId": "your-default-canister-id"
+}
+```
+
+### Environment Variables
+```bash
+export REPDAO_NETWORK=ic
+export REPDAO_CANISTER_ID=your-canister-id
+export REPDAO_PEM=/path/to/identity.pem
+```
+
+### Command Line Options
+```bash
+repdao --network local --canister <id> --pem ./identity.pem <command>
+```
+
+---
+
+## 🔌 SDK Usage
+
+### Basic Example
+```typescript
+import { awardRep, getBalance } from 'repdao';
 import { identityFromPemFile } from 'repdao/identity';
+
+const identity = identityFromPemFile('~/.repdao/admin.pem');
+const opts = { identity, network: 'ic' as const };
+
+// Award points
+await awardRep('canister-id', 'user-principal', 100n, 'Great work!', opts);
+
+// Check balance
+const balance = await getBalance('canister-id', 'user-principal', opts);
+console.log(`Balance: ${balance} points`);
 ```
 
----
-
-## 🚀 CLI Usage
-
-Run `repdao --help` to see all available commands.
-
-```bash
-Usage: repdao [options] [command]
-
-Reputation DAO CLI wrapper
-
-Options:
-  --network <net>     ic | local | custom (default: "ic")
-  --host <url>        host override (e.g. http://127.0.0.1:4943)
-  --pem <path>        PEM for identity
-  -h, --help          display help for command
-```
-
-### Common Commands
-
-* **Award Reputation**
-
-  ```bash
-  repdao awardRep <canisterId> <toPrincipal> <amount> --reason "helpful"
-  ```
-
-* **Revoke Reputation**
-
-  ```bash
-  repdao revokeRep <canisterId> <fromPrincipal> <amount> --reason "abuse"
-  ```
-
-* **Query Balance**
-
-  ```bash
-  repdao getBalance <canisterId> <principal>
-  ```
-
-* **Inspect Health**
-
-  ```bash
-  repdao health <canisterId>
-  ```
-
-* **List Trusted Awarders**
-
-  ```bash
-  repdao getTrustedAwarders <canisterId>
-  ```
-
-* **Identity Management**
-
-  ```bash
-  repdao id:list
-  repdao id:new alice
-  repdao id:use alice
-  repdao id:whoami
-  ```
-
-> Run `repdao help <command>` for detailed usage of a specific command.
-
----
-
-## 📚 API Usage
-
-All functions mirror the canister methods and are available in TypeScript with proper typings.
-
-```ts
-import {
-  awardRep,
-  revokeRep,
-  getBalance,
+### Advanced Example
+```typescript
+import { 
+  multiAward, 
+  leaderboard, 
   health,
-  configureDecay
+  configureDecay 
 } from 'repdao';
 
-import { identityFromPemFile } from 'repdao/identity';
+// Batch award to multiple users
+await multiAward('canister-id', [
+  ['user1', 100n, 'Great contribution'],
+  ['user2', 50n, 'Good work'],
+  ['user3', 25n, 'Thanks for participating']
+], true, opts); // atomic = true
 
-const cid = "txygj-baaaa-aaaam-qd4bq-cai"; // canister id
-const user = "ly6rq-d4d23-63ct7-e2j6c-257jk-627xo-wwwd4-lnxm6-qt7xb-573bv-bqe"; // principal
+// Get top 10 leaderboard
+const leaders = await leaderboard('canister-id', 10n, 0n, opts);
+leaders.forEach(([principal, points], i) => {
+  console.log(`${i + 1}. ${principal}: ${points} points`);
+});
 
-async function main() {
-  // load identity
-  const id = identityFromPemFile("~/.repdao/alice.pem");
-
-  // award reputation
-  const res = await awardRep(cid, user, 100n, "great work", { identity: id, network: "ic" });
-  console.log("Award response:", res);
-
-  // query balance
-  const bal = await getBalance(cid, user, { identity: id, network: "ic" });
-  console.log("User balance:", bal.toString());
-
-  // check system health
-  const h = await health(cid, { network: "ic" });
-  console.log("Health:", h);
-}
-
-main().catch(console.error);
+// Check canister health
+const status = await health('canister-id', opts);
+console.log(`Status: ${status.paused ? 'Paused' : 'Active'}`);
+console.log(`Cycles: ${status.cycles}`);
 ```
 
 ---
 
-## 🔑 Identity Management
+## 🛠️ Admin Commands
 
-The CLI maintains its own identity store under `~/.repdao`.
-Identities are PEM files (`.pem`) with secp256k1 keys.
+### Manage Awarders
+```bash
+# Add trusted awarder
+repdao addTrustedAwarder <canister-id> <awarder-principal> "Awarder Name"
 
-* **Create new identity**
+# Remove awarder
+repdao removeTrustedAwarder <canister-id> <awarder-principal>
 
-  ```bash
-  repdao id:new alice
-  ```
+# List all awarders
+repdao getTrustedAwarders <canister-id>
+```
 
-* **Switch identity**
+### Configure Decay
+```bash
+# Set decay parameters
+repdao configureDecay <canister-id> 500 2592000 10 2592000 true
+# Rate: 5% (500 basis points)
+# Interval: 30 days (2592000 seconds)
+# Min threshold: 10 points
+# Grace period: 30 days
+# Enabled: true
+```
 
-  ```bash
-  repdao id:use alice
-  ```
+### Cycles Management
+```bash
+# Check cycles balance
+repdao cycles_balance <canister-id>
 
-* **Import PEM**
+# Top up canister (attach cycles)
+repdao topUp <canister-id>
 
-  ```bash
-  repdao id:import bob /path/to/bob.pem
-  ```
-
-* **Export PEM**
-
-  ```bash
-  repdao id:export alice
-  ```
-
-* **Sync with dfx**
-
-  ```bash
-  repdao id:sync
-  ```
-
-If no identity is set, CLI will fall back to your `dfx` default identity if available.
+# Return cycles to factory
+repdao returnCyclesToFactory <canister-id> 100000000000
+```
 
 ---
 
-## 🛠 Development
+## 🚨 Error Handling
 
-Clone the repo and build:
+The CLI provides helpful error messages:
 
 ```bash
-git clone https://github.com/<your-org>/repdao.git
-cd repdao
-npm install
-npm run build
+❌ Canister ID required. Use --canister <id> or run: repdao setup
+❌ Invalid principal format: not-a-principal
+❌ Expected number, got: abc
+❌ Identity error: PEM file not found
 ```
 
-Link globally for local testing:
+Common solutions:
+- Run `repdao setup` for first-time configuration
+- Use `repdao id:new <name>` to create an identity
+- Check your canister ID format
+- Ensure you have the right permissions
 
+---
+
+## 🔍 Troubleshooting
+
+### "Canister ID required"
 ```bash
-npm link
-repdao --help
+# Set default canister
+repdao setup
+
+# Or use --canister flag
+repdao health --canister <your-canister-id>
 ```
 
-Unlink when done:
-
+### "Identity error"
 ```bash
-npm unlink -g repdao
+# Create new identity
+repdao id:new admin
+
+# Or import existing
+repdao id:import admin ./path/to/identity.pem
+
+# Or sync from dfx
+repdao id:sync
+```
+
+### "Network connection failed"
+```bash
+# Try local network
+repdao --network local health <canister-id>
+
+# Or specify custom host
+repdao --host http://127.0.0.1:4943 health <canister-id>
 ```
 
 ---
 
-## 📖 Notes
+## 📚 Full Command Reference
 
-* Requires **Node.js 18+**
-* Works with both **IC mainnet** (`--network ic`) and **local replica** (`--network local`).
-* All BigInt values (`Nat`) are returned as native JavaScript `bigint`.
+| Command | Description |
+|---------|-------------|
+| `setup` | 🚀 First-time setup wizard |
+| `wizard` | 🧙 Interactive command builder |
+| `health` | 🏥 Check canister status |
+| `awardRep` | 🎯 Award reputation points |
+| `multiAward` | 🎯 Award to multiple users |
+| `revokeRep` | ❌ Revoke points (admin only) |
+| `getBalance` | 💰 Check user balance |
+| `leaderboard` | 🏆 View top users |
+| `myStats` | 📊 Get user statistics |
+| `getTrustedAwarders` | 👥 List awarders |
+| `addTrustedAwarder` | ➕ Add awarder (admin) |
+| `removeTrustedAwarder` | ➖ Remove awarder (admin) |
+| `configureDecay` | ⚙️ Set decay parameters |
+| `processBatchDecay` | 🔄 Process decay manually |
+| `topUp` | ⛽ Add cycles to canister |
+| `withdrawCycles` | 💸 Withdraw cycles |
+| `returnCyclesToFactory` | 🔄 Return cycles to factory |
+
+### Identity Commands
+| Command | Description |
+|---------|-------------|
+| `id:list` | 📋 List all identities |
+| `id:whoami` | 🤔 Show current principal |
+| `id:new <name>` | ➕ Create new identity |
+| `id:use <name>` | 🔄 Switch identity |
+| `id:import <name> <file>` | 📥 Import PEM file |
+| `id:export <name>` | 📤 Export PEM file |
+| `id:sync` | 🔄 Sync with dfx identities |
 
 ---
 
-## 📜 License
+## 🤝 Support
 
-MIT © 2025 Ayush Kumar Gaur
+- 📖 **Documentation**: This README + `repdao --help`
+- 🧙 **Interactive Help**: `repdao wizard`
+- 🐛 **Issues**: [GitHub Issues](https://github.com/reputation-dao/repdao/issues)
+- 💬 **Community**: Join our Discord/Telegram
 
-```
-```
+---
+
+## 📄 License
+
+MIT © Reputation DAO Contributors
+
+---
+
+**Made with ❤️ for the Internet Computer community**
+

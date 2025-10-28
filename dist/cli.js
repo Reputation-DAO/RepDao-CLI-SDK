@@ -1,37 +1,92 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { config as loadEnv } from 'dotenv';
+import { readFileSync, existsSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { identityFromPemFile } from './identity.js';
-import { addTrustedAwarder, awardRep, getBalance, invokeQuery, invokeUpdate, } from './client.js';
+import { addTrustedAwarder, awardRep, getBalance, invokeQuery, invokeUpdate, returnCyclesToFactory, } from './client.js';
 import { resolveIdentityPath, list as listIds, listDfxIdentities, use as useId, importPem, exportPem, del as delId, newIdentity, identityPathOrThrow, dfxPemPath, } from './identityStore.js';
 import { Secp256k1KeyIdentity } from '@dfinity/identity-secp256k1';
 import { Principal } from '@dfinity/principal';
-import { readFileSync } from 'node:fs';
 // ---- Candid helpers ----
 // For Candid `opt text`: use [] for null, ["value"] for some.
 function OptText(s) {
     return s == null ? [] : [String(s)];
 }
 /* -----------------------------------------------------------------------------
-   Setup
+   Setup & Config
 ----------------------------------------------------------------------------- */
 loadEnv();
+function loadConfig() {
+    const configPath = join(homedir(), '.repdao', 'config.json');
+    if (existsSync(configPath)) {
+        try {
+            return JSON.parse(readFileSync(configPath, 'utf8'));
+        }
+        catch {
+            return {};
+        }
+    }
+    return {};
+}
+const config = loadConfig();
 const program = new Command();
 program
     .name('repdao')
-    .description('Reputation DAO CLI wrapper')
-    .option('--network <net>', 'ic | local | custom', process.env.REPDAO_NETWORK ?? 'ic')
-    .option('--host <url>', 'host override (e.g. http://127.0.0.1:4943)')
-    .option('--pem <path>', 'PEM for identity', process.env.REPDAO_PEM);
+    .description('Reputation DAO CLI - The easiest way to manage reputation points')
+    .version('0.1.0')
+    .option('--network <net>', 'Network: ic | local | custom', process.env.REPDAO_NETWORK ?? config.network ?? 'ic')
+    .option('--host <url>', 'Host override (e.g. http://127.0.0.1:4943)')
+    .option('--pem <path>', 'PEM file for identity', process.env.REPDAO_PEM)
+    .option('--canister <id>', 'Default canister ID', config.canisterId)
+    .addHelpText('after', `
+Examples:
+  repdao setup                           # First-time setup wizard
+  repdao wizard                          # Interactive command builder
+  repdao health <canister-id>            # Check canister status
+  repdao awardRep <cid> <user> 100       # Award 100 points
+  repdao getBalance <cid> <user>         # Check balance
+  
+Environment Variables:
+  REPDAO_NETWORK     # Default network (ic/local)
+  REPDAO_PEM         # Default PEM file path
+  REPDAO_CANISTER_ID # Default canister ID
+
+Config File: ~/.repdao/config.json
+`);
 /* -----------------------------------------------------------------------------
-   Helpers
+   Helpers & Validation
 ----------------------------------------------------------------------------- */
+function validateCanisterId(cid) {
+    if (!cid) {
+        console.error('❌ Canister ID required. Use --canister <id> or run: repdao setup');
+        process.exit(1);
+    }
+    if (!/^[a-z0-9-]+$/.test(cid)) {
+        console.error('❌ Invalid canister ID format');
+        process.exit(1);
+    }
+    return cid;
+}
+function validatePrincipal(p) {
+    try {
+        P(p);
+        return p;
+    }
+    catch {
+        console.error('❌ Invalid principal format:', p);
+        process.exit(1);
+    }
+}
 function P(txt) {
     return Principal.fromText(txt);
 }
 function N(txt) {
-    if (!/^\d+$/.test(txt))
-        throw new Error(`Expected Nat (integer), got: ${txt}`);
+    if (!/^\d+$/.test(txt)) {
+        console.error('❌ Expected number, got:', txt);
+        process.exit(1);
+    }
     return BigInt(txt);
 }
 function B(txt) {
@@ -39,22 +94,337 @@ function B(txt) {
         return true;
     if (txt === 'false')
         return false;
-    throw new Error(`Expected Bool (true|false), got: ${txt}`);
+    console.error('❌ Expected true/false, got:', txt);
+    process.exit(1);
 }
 function pretty(val) {
     return typeof val === 'bigint'
         ? val.toString()
         : JSON.stringify(val, (_k, v) => (typeof v === 'bigint' ? v.toString() : v), 2);
 }
+function success(msg) {
+    console.log('✅', msg);
+}
+function error(msg) {
+    console.error('❌', msg);
+    process.exit(1);
+}
 function optsWithIdentity() {
     const opts = program.opts();
-    const pemPath = resolveIdentityPath(opts);
-    const identity = identityFromPemFile(pemPath);
-    return { identity, network: opts.network, host: opts.host };
+    try {
+        const pemPath = resolveIdentityPath(opts);
+        const identity = identityFromPemFile(pemPath);
+        return { identity, network: opts.network, host: opts.host };
+    }
+    catch (e) {
+        error(`Identity error: ${e instanceof Error ? e.message : String(e)}`);
+    }
 }
 /* -----------------------------------------------------------------------------
-   Canister commands (typed, no generic query/call needed)
+   Setup & Wizard Commands
 ----------------------------------------------------------------------------- */
+program
+    .command('setup')
+    .description('🚀 First-time setup wizard')
+    .action(async () => {
+    const { spawn } = await import('node:child_process');
+    spawn('node', [join(process.cwd(), 'dist/setup.js')], { stdio: 'inherit' });
+});
+program
+    .command('wizard')
+    .description('🧙 Interactive command builder')
+    .action(async () => {
+    const { spawn } = await import('node:child_process');
+    spawn('node', [join(process.cwd(), 'dist/wizard.js')], { stdio: 'inherit' });
+});
+/* -----------------------------------------------------------------------------
+   🚀 LEGENDARY COMMANDS - The 0.001% Edge
+----------------------------------------------------------------------------- */
+program
+    .command('analyze [canisterId] [userPrincipal]')
+    .description('🔬 Deep user analysis with predictions')
+    .option('-c, --canister <id>', 'Canister ID')
+    .option('--days <n>', 'Predict decay for N days', '30')
+    .action(async (cid, user, cmd) => {
+    const opts = cmd?.opts() || {};
+    const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
+    if (!user) {
+        console.error('❌ User principal required');
+        process.exit(1);
+    }
+    validatePrincipal(user);
+    try {
+        console.log('🔬 Analyzing user...');
+        const { analyzeUserComplete, predictDecay } = await import('./analytics.js');
+        const [analysis, prediction] = await Promise.all([
+            analyzeUserComplete(canisterId, user, optsWithIdentity()),
+            predictDecay(canisterId, user, parseInt(opts.days), optsWithIdentity())
+        ]);
+        console.log('\n📊 User Analysis:');
+        console.log(`  Balance: ${analysis.balance} points`);
+        console.log(`  Lifetime Awarded: ${analysis.stats.lifetimeAwarded}`);
+        console.log(`  Lifetime Revoked: ${analysis.stats.lifetimeRevoked}`);
+        console.log(`  Total Decayed: ${analysis.stats.totalDecayed}`);
+        console.log(`  Transactions: ${analysis.transactions.length}`);
+        console.log(`  Awarder Sources: ${analysis.awarderBreakdown.length}`);
+        console.log('\n🔮 Decay Prediction:');
+        console.log(`  Current: ${prediction.currentBalance} points`);
+        console.log(`  After ${opts.days} days: ${prediction.projectedBalance} points`);
+        console.log(`  Total decay: ${prediction.totalDecay} points`);
+        if (prediction.daysUntilZero) {
+            console.log(`  Days until zero: ${prediction.daysUntilZero}`);
+        }
+    }
+    catch (e) {
+        error(`Analysis failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+});
+program
+    .command('monitor [canisterId]')
+    .description('👁️  Real-time canister monitoring')
+    .option('-c, --canister <id>', 'Canister ID')
+    .option('--webhook <url>', 'Webhook URL for alerts')
+    .option('--interval <sec>', 'Check interval in seconds', '60')
+    .action(async (cid, cmd) => {
+    const opts = cmd?.opts() || {};
+    const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
+    try {
+        console.log('👁️  Starting real-time monitoring...');
+        console.log('Press Ctrl+C to stop');
+        const { createMonitor } = await import('./monitor.js');
+        const monitor = createMonitor(canisterId, {
+            ...optsWithIdentity(),
+            webhook: opts.webhook
+        });
+        await monitor.start();
+        // Handle graceful shutdown
+        process.on('SIGINT', () => {
+            monitor.stop();
+            process.exit(0);
+        });
+    }
+    catch (e) {
+        error(`Monitor failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+});
+program
+    .command('healthcheck [canisterId]')
+    .description('🏥 Advanced health assessment with recommendations')
+    .option('-c, --canister <id>', 'Canister ID')
+    .option('--json', 'Output as JSON')
+    .action(async (cid, cmd) => {
+    const opts = cmd?.opts() || {};
+    const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
+    try {
+        console.log('🏥 Running advanced health check...');
+        const { assessSystemHealth, getCanisterMetrics } = await import('./analytics.js');
+        const [health, metrics] = await Promise.all([
+            assessSystemHealth(canisterId, optsWithIdentity()),
+            getCanisterMetrics(canisterId, optsWithIdentity())
+        ]);
+        if (opts.json) {
+            console.log(JSON.stringify({ health, metrics }, null, 2));
+            return;
+        }
+        console.log('\n🎯 Health Score:', `${health.score}/100`);
+        console.log('📊 Status:', health.status.toUpperCase());
+        if (health.issues.length > 0) {
+            console.log('\n⚠️  Issues:');
+            health.issues.forEach(issue => console.log(`  • ${issue}`));
+        }
+        if (health.recommendations.length > 0) {
+            console.log('\n💡 Recommendations:');
+            health.recommendations.forEach(rec => console.log(`  • ${rec}`));
+        }
+        console.log('\n📈 Metrics:');
+        console.log(`  Cycles: ${(Number(metrics.cycles) / 1e12).toFixed(2)}T`);
+        console.log(`  Users: ${metrics.users}`);
+        console.log(`  Transactions: ${metrics.transactions}`);
+        console.log(`  Version: ${metrics.version}`);
+    }
+    catch (e) {
+        error(`Health check failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+});
+program
+    .command('batch-award <csvFile>')
+    .description('📊 Award points from CSV file')
+    .option('-c, --canister <id>', 'Canister ID')
+    .option('--dry-run', 'Preview without executing')
+    .option('--atomic', 'All or nothing execution')
+    .action(async (csvFile, cmd) => {
+    const opts = cmd?.opts() || {};
+    const canisterId = validateCanisterId(opts.canister || program.opts().canister);
+    try {
+        const { readFileSync } = await import('node:fs');
+        const csv = readFileSync(csvFile, 'utf8');
+        const lines = csv.split('\n').filter(l => l.trim());
+        const header = lines[0];
+        if (!header.includes('principal') || !header.includes('amount')) {
+            error('CSV must have "principal" and "amount" columns');
+        }
+        const awards = lines.slice(1).map(line => {
+            const [principal, amount, reason] = line.split(',').map(s => s.trim());
+            return [principal, amount, reason || 'Batch award'];
+        });
+        console.log(`📊 Processing ${awards.length} awards...`);
+        if (opts.dryRun) {
+            console.log('🔍 DRY RUN - Preview:');
+            awards.slice(0, 5).forEach(([p, a, r]) => {
+                console.log(`  ${p}: ${a} points (${r})`);
+            });
+            if (awards.length > 5)
+                console.log(`  ... and ${awards.length - 5} more`);
+            return;
+        }
+        const { multiAward } = await import('./client.js');
+        const result = await multiAward(canisterId, awards, !!opts.atomic, optsWithIdentity());
+        success(result);
+    }
+    catch (e) {
+        error(`Batch award failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+});
+program
+    .command('export-data [canisterId]')
+    .description('📤 Export all canister data')
+    .option('-c, --canister <id>', 'Canister ID')
+    .option('--format <type>', 'Output format: json|csv', 'json')
+    .option('--output <file>', 'Output file (default: stdout)')
+    .action(async (cid, cmd) => {
+    const opts = cmd?.opts() || {};
+    const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
+    try {
+        console.log('📤 Exporting canister data...');
+        const [transactions, awarders, health, leaderboard] = await Promise.all([
+            invokeQuery(canisterId, 'getTransactionHistory', [], optsWithIdentity()),
+            invokeQuery(canisterId, 'getTrustedAwarders', [], optsWithIdentity()),
+            invokeQuery(canisterId, 'health', [], optsWithIdentity()),
+            invokeQuery(canisterId, 'leaderboard', [100n, 0n], optsWithIdentity())
+        ]);
+        const data = {
+            canisterId,
+            exportedAt: new Date().toISOString(),
+            health,
+            transactions,
+            awarders,
+            leaderboard
+        };
+        const output = opts.format === 'csv'
+            ? convertToCSV(data)
+            : JSON.stringify(data, null, 2);
+        if (opts.output) {
+            const { writeFileSync } = await import('node:fs');
+            writeFileSync(opts.output, output);
+            success(`Data exported to ${opts.output}`);
+        }
+        else {
+            console.log(output);
+        }
+    }
+    catch (e) {
+        error(`Export failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+});
+program
+    .command('insights [canisterId]')
+    .description('🧠 AI-powered insights and recommendations')
+    .option('-c, --canister <id>', 'Canister ID')
+    .option('--user <principal>', 'Analyze specific user behavior')
+    .action(async (cid, cmd) => {
+    const opts = cmd?.opts() || {};
+    const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
+    try {
+        console.log('🧠 Generating AI-powered insights...');
+        const { generateInsights, analyzeUserBehavior, prioritizeInsights } = await import('./insights.js');
+        if (opts.user) {
+            validatePrincipal(opts.user);
+            const { analysis, insights } = await analyzeUserBehavior(canisterId, opts.user, optsWithIdentity());
+            console.log(`\n👤 User Analysis: ${opts.user}`);
+            console.log(`  Balance: ${analysis.balance} points`);
+            console.log(`  Activity: ${analysis.transactions.length} transactions`);
+            console.log(`  Sources: ${analysis.awarderBreakdown.length} awarders`);
+            if (insights.length > 0) {
+                console.log('\n💡 Behavioral Insights:');
+                insights.forEach((insight, i) => {
+                    const icon = insight.type === 'warning' ? '⚠️' : insight.type === 'opportunity' ? '🎯' : '📈';
+                    console.log(`  ${icon} ${insight.title}`);
+                    console.log(`     ${insight.description}`);
+                    if (insight.recommendation) {
+                        console.log(`     💡 ${insight.recommendation}`);
+                    }
+                });
+            }
+        }
+        else {
+            const insights = await generateInsights(canisterId, optsWithIdentity());
+            const prioritized = prioritizeInsights(insights);
+            console.log('\n🎯 System Insights:');
+            if (prioritized.length === 0) {
+                console.log('  ✅ No issues detected - system is running optimally!');
+            }
+            else {
+                prioritized.forEach((insight, i) => {
+                    const icon = insight.type === 'warning' ? '⚠️' :
+                        insight.type === 'optimization' ? '⚡' :
+                            insight.type === 'opportunity' ? '🎯' : '📈';
+                    const impact = insight.impact === 'high' ? '🔴' :
+                        insight.impact === 'medium' ? '🟡' : '🟢';
+                    console.log(`  ${icon} ${impact} ${insight.title}`);
+                    console.log(`     ${insight.description}`);
+                    if (insight.recommendation) {
+                        console.log(`     💡 ${insight.recommendation}`);
+                    }
+                    console.log('');
+                });
+            }
+        }
+    }
+    catch (e) {
+        error(`Insights generation failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+});
+program
+    .command('stream [canisterId]')
+    .description('🎧 Real-time event streaming')
+    .option('-c, --canister <id>', 'Canister ID')
+    .option('--webhook <url>', 'Forward events to webhook')
+    .option('--filter <type>', 'Filter events: award|revoke|decay|topup')
+    .action(async (cid, cmd) => {
+    const opts = cmd?.opts() || {};
+    const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
+    try {
+        console.log('🎧 Starting real-time event stream...');
+        console.log('Press Ctrl+C to stop');
+        const { createEventStream } = await import('./events.js');
+        const stream = createEventStream(canisterId, optsWithIdentity());
+        stream.onEvent((event) => {
+            if (opts.filter && event.type !== opts.filter)
+                return;
+            const timestamp = new Date(event.timestamp * 1000).toLocaleTimeString();
+            const icon = event.type === 'award' ? '🎯' :
+                event.type === 'revoke' ? '❌' :
+                    event.type === 'decay' ? '⏰' : '⛽';
+            console.log(`${icon} [${timestamp}] ${event.type.toUpperCase()}: ${JSON.stringify(event.data, null, 2)}`);
+        });
+        await stream.start();
+        process.on('SIGINT', () => {
+            stream.stop();
+            process.exit(0);
+        });
+    }
+    catch (e) {
+        error(`Event streaming failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+});
+function convertToCSV(data) {
+    // Simple CSV conversion for transactions
+    const headers = ['id', 'type', 'from', 'to', 'amount', 'timestamp', 'reason'];
+    const rows = data.transactions.map((tx) => [
+        tx.id, tx.transactionType, tx.from, tx.to, tx.amount, tx.timestamp, tx.reason || ''
+    ]);
+    return [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+}
 /** Awarders / transfers */
 program
     .command('addTrustedAwarder')
@@ -74,18 +444,32 @@ program
     console.log(res);
 });
 program
-    .command('awardRep')
-    .argument('<canisterId>')
-    .argument('<toPrincipal>')
-    .argument('<amount>')
-    .option('-r, --reason <text>')
-    .action(async (...args) => {
-    const cmd = args[args.length - 1]; // Commander Command
-    const [cid, to, amount] = args.slice(0, -1); // positionals
-    const opts = cmd.opts(); // ✅ no generic error
-    const { reason } = opts;
-    const res = await awardRep(cid, to, N(amount), reason, optsWithIdentity());
-    console.log(res);
+    .command('awardRep [canisterId] [toPrincipal] [amount]')
+    .description('🎯 Award reputation points to a user')
+    .option('-r, --reason <text>', 'Reason for the award')
+    .option('-c, --canister <id>', 'Canister ID (overrides default)')
+    .action(async (cid, to, amount, cmd) => {
+    const opts = cmd?.opts() || {};
+    const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
+    if (!to) {
+        console.error('❌ Recipient principal required');
+        console.log('Usage: repdao awardRep <canister-id> <recipient> <amount>');
+        process.exit(1);
+    }
+    if (!amount) {
+        console.error('❌ Amount required');
+        console.log('Usage: repdao awardRep <canister-id> <recipient> <amount>');
+        process.exit(1);
+    }
+    validatePrincipal(to);
+    try {
+        console.log(`🎯 Awarding ${amount} points to ${to}...`);
+        const res = await awardRep(canisterId, to, N(amount), opts.reason, optsWithIdentity());
+        success(res);
+    }
+    catch (e) {
+        error(`Award failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
 });
 program
     .command('multiAward')
@@ -258,6 +642,14 @@ program
     const res = await invokeUpdate(cid, 'withdrawCycles', [P(to), N(amount)], optsWithIdentity());
     console.log(res);
 });
+program
+    .command('returnCyclesToFactory')
+    .argument('<canisterId>')
+    .argument('[minRemainNat]', 'minimum cycles to leave on the child (default 0)', '0')
+    .action(async (cid, minRemain) => {
+    const res = await returnCyclesToFactory(cid, minRemain ?? '0', optsWithIdentity());
+    console.log(res.toString());
+});
 /** DX events */
 program
     .command('emitEvent')
@@ -284,12 +676,26 @@ program
 });
 /** Queries */
 program
-    .command('getBalance')
-    .argument('<canisterId>')
-    .argument('<principal>')
-    .action(async (cid, p) => {
-    const bal = await getBalance(cid, p, program.opts());
-    console.log(bal.toString());
+    .command('getBalance [canisterId] [principal]')
+    .description('💰 Check reputation balance for a user')
+    .option('-c, --canister <id>', 'Canister ID (overrides default)')
+    .action(async (cid, p, cmd) => {
+    const opts = cmd?.opts() || {};
+    const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
+    if (!p) {
+        console.error('❌ User principal required');
+        console.log('Usage: repdao getBalance <canister-id> <user-principal>');
+        process.exit(1);
+    }
+    validatePrincipal(p);
+    try {
+        console.log(`💰 Checking balance for ${p}...`);
+        const bal = await getBalance(canisterId, p, program.opts());
+        console.log(`Balance: ${bal.toString()} points`);
+    }
+    catch (e) {
+        error(`Balance check failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
 });
 program
     .command('getTrustedAwarders')
@@ -441,11 +847,29 @@ program
     console.log(pretty(res));
 });
 program
-    .command('health')
-    .argument('<canisterId>')
-    .action(async (cid) => {
-    const res = await invokeQuery(cid, 'health', [], program.opts());
-    console.log(pretty(res));
+    .command('health [canisterId]')
+    .description('🏥 Check canister health and status')
+    .option('-c, --canister <id>', 'Canister ID (overrides default)')
+    .action(async (cid, cmd) => {
+    const opts = cmd?.opts() || {};
+    const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
+    try {
+        console.log('🏥 Checking canister health...');
+        const res = await invokeQuery(canisterId, 'health', [], program.opts());
+        console.log('\n📊 Canister Status:');
+        console.log(`  Status: ${res.paused ? '⏸️  Paused' : '✅ Active'}`);
+        console.log(`  Cycles: ${(Number(res.cycles) / 1e12).toFixed(2)}T`);
+        console.log(`  Users: ${res.users}`);
+        console.log(`  Transactions: ${res.txCount}`);
+        console.log(`  Top-ups: ${res.topUpCount}`);
+        console.log(`  Decay Config Hash: ${res.decayConfigHash}`);
+        if (Number(res.cycles) < 1e12) {
+            console.log('\n⚠️  Warning: Low cycles balance!');
+        }
+    }
+    catch (e) {
+        error(`Health check failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
 });
 program
     .command('cycles_balance')
@@ -550,7 +974,42 @@ program
 /* -----------------------------------------------------------------------------
    Parse
 ----------------------------------------------------------------------------- */
+/* -----------------------------------------------------------------------------
+   Parse & Error Handling
+----------------------------------------------------------------------------- */
+// Wrap all command actions with error handling
+const originalAction = program.action;
+program.action = function (fn) {
+    return originalAction.call(this, async (...args) => {
+        try {
+            await fn(...args);
+        }
+        catch (e) {
+            if (e instanceof Error) {
+                if (e.message.includes('Canister not found')) {
+                    error('Canister not found. Check your canister ID.');
+                }
+                else if (e.message.includes('Unauthorized')) {
+                    error('Unauthorized. Check your identity and permissions.');
+                }
+                else if (e.message.includes('Network')) {
+                    error('Network error. Check your connection and try again.');
+                }
+                else {
+                    error(e.message);
+                }
+            }
+            else {
+                error(String(e));
+            }
+        }
+    });
+};
 program.parseAsync(process.argv).catch((e) => {
-    console.error(e);
+    console.error('💥 Unexpected error:', e);
+    console.log('\n🆘 Need help?');
+    console.log('  repdao setup    # First-time setup');
+    console.log('  repdao wizard   # Interactive commands');
+    console.log('  repdao --help   # Full command list');
     process.exit(1);
 });
