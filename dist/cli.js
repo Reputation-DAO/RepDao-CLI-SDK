@@ -3,7 +3,8 @@ import { Command } from 'commander';
 import { config as loadEnv } from 'dotenv';
 import { readFileSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { identityFromPemFile } from './identity.js';
 import { addTrustedAwarder, awardRep, getBalance, invokeQuery, invokeUpdate, returnCyclesToFactory, } from './client.js';
 import { resolveIdentityPath, list as listIds, listDfxIdentities, use as useId, importPem, exportPem, del as delId, newIdentity, identityPathOrThrow, dfxPemPath, } from './identityStore.js';
@@ -55,6 +56,16 @@ Environment Variables:
 
 Config File: ~/.repdao/config.json
 `);
+const CLI_DIR = dirname(fileURLToPath(import.meta.url));
+function resolveDistScript(relPath) {
+    const direct = join(CLI_DIR, relPath);
+    if (existsSync(direct))
+        return direct;
+    const built = join(CLI_DIR, '..', 'dist', relPath);
+    if (existsSync(built))
+        return built;
+    throw new Error(`Cannot locate ${relPath}. Ensure the package is built (npm run build) before running this command.`);
+}
 /* -----------------------------------------------------------------------------
    Helpers & Validation
 ----------------------------------------------------------------------------- */
@@ -128,14 +139,26 @@ program
     .description('🚀 First-time setup wizard')
     .action(async () => {
     const { spawn } = await import('node:child_process');
-    spawn('node', [join(process.cwd(), 'dist/setup.js')], { stdio: 'inherit' });
+    try {
+        const script = resolveDistScript('setup.js');
+        spawn(process.execPath, [script], { stdio: 'inherit' });
+    }
+    catch (e) {
+        error(e instanceof Error ? e.message : String(e));
+    }
 });
 program
     .command('wizard')
     .description('🧙 Interactive command builder')
     .action(async () => {
     const { spawn } = await import('node:child_process');
-    spawn('node', [join(process.cwd(), 'dist/wizard.js')], { stdio: 'inherit' });
+    try {
+        const script = resolveDistScript('wizard.js');
+        spawn(process.execPath, [script], { stdio: 'inherit' });
+    }
+    catch (e) {
+        error(e instanceof Error ? e.message : String(e));
+    }
 });
 /* -----------------------------------------------------------------------------
    🚀 LEGENDARY COMMANDS - The 0.001% Edge
@@ -146,7 +169,7 @@ program
     .option('-c, --canister <id>', 'Canister ID')
     .option('--days <n>', 'Predict decay for N days', '30')
     .action(async (cid, user, cmd) => {
-    const opts = cmd?.opts() || {};
+    const opts = ((cmd && typeof cmd.opts === "function") ? cmd.opts() : {});
     const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
     if (!user) {
         console.error('❌ User principal required');
@@ -186,7 +209,7 @@ program
     .option('--webhook <url>', 'Webhook URL for alerts')
     .option('--interval <sec>', 'Check interval in seconds', '60')
     .action(async (cid, cmd) => {
-    const opts = cmd?.opts() || {};
+    const opts = ((cmd && typeof cmd.opts === "function") ? cmd.opts() : {});
     const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
     try {
         console.log('👁️  Starting real-time monitoring...');
@@ -213,7 +236,7 @@ program
     .option('-c, --canister <id>', 'Canister ID')
     .option('--json', 'Output as JSON')
     .action(async (cid, cmd) => {
-    const opts = cmd?.opts() || {};
+    const opts = ((cmd && typeof cmd.opts === "function") ? cmd.opts() : {});
     const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
     try {
         console.log('🏥 Running advanced health check...');
@@ -253,7 +276,7 @@ program
     .option('--dry-run', 'Preview without executing')
     .option('--atomic', 'All or nothing execution')
     .action(async (csvFile, cmd) => {
-    const opts = cmd?.opts() || {};
+    const opts = ((cmd && typeof cmd.opts === "function") ? cmd.opts() : {});
     const canisterId = validateCanisterId(opts.canister || program.opts().canister);
     try {
         const { readFileSync } = await import('node:fs');
@@ -292,7 +315,7 @@ program
     .option('--format <type>', 'Output format: json|csv', 'json')
     .option('--output <file>', 'Output file (default: stdout)')
     .action(async (cid, cmd) => {
-    const opts = cmd?.opts() || {};
+    const opts = ((cmd && typeof cmd.opts === "function") ? cmd.opts() : {});
     const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
     try {
         console.log('📤 Exporting canister data...');
@@ -332,7 +355,7 @@ program
     .option('-c, --canister <id>', 'Canister ID')
     .option('--user <principal>', 'Analyze specific user behavior')
     .action(async (cid, cmd) => {
-    const opts = cmd?.opts() || {};
+    const opts = ((cmd && typeof cmd.opts === "function") ? cmd.opts() : {});
     const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
     try {
         console.log('🧠 Generating AI-powered insights...');
@@ -391,7 +414,7 @@ program
     .option('--webhook <url>', 'Forward events to webhook')
     .option('--filter <type>', 'Filter events: award|revoke|decay|topup')
     .action(async (cid, cmd) => {
-    const opts = cmd?.opts() || {};
+    const opts = ((cmd && typeof cmd.opts === "function") ? cmd.opts() : {});
     const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
     try {
         console.log('🎧 Starting real-time event stream...');
@@ -449,7 +472,7 @@ program
     .option('-r, --reason <text>', 'Reason for the award')
     .option('-c, --canister <id>', 'Canister ID (overrides default)')
     .action(async (cid, to, amount, cmd) => {
-    const opts = cmd?.opts() || {};
+    const opts = ((cmd && typeof cmd.opts === "function") ? cmd.opts() : {});
     const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
     if (!to) {
         console.error('❌ Recipient principal required');
@@ -680,7 +703,7 @@ program
     .description('💰 Check reputation balance for a user')
     .option('-c, --canister <id>', 'Canister ID (overrides default)')
     .action(async (cid, p, cmd) => {
-    const opts = cmd?.opts() || {};
+    const opts = ((cmd && typeof cmd.opts === "function") ? cmd.opts() : {});
     const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
     if (!p) {
         console.error('❌ User principal required');
@@ -851,7 +874,7 @@ program
     .description('🏥 Check canister health and status')
     .option('-c, --canister <id>', 'Canister ID (overrides default)')
     .action(async (cid, cmd) => {
-    const opts = cmd?.opts() || {};
+    const opts = (cmd && typeof cmd.opts === 'function') ? cmd.opts() : {};
     const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
     try {
         console.log('🏥 Checking canister health...');

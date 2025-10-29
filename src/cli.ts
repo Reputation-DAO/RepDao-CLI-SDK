@@ -3,7 +3,8 @@ import { Command } from 'commander';
 import { config as loadEnv } from 'dotenv';
 import { readFileSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { identityFromPemFile } from './identity.js';
 import {
   addTrustedAwarder,
@@ -80,6 +81,20 @@ Environment Variables:
 
 Config File: ~/.repdao/config.json
 `);
+
+const CLI_DIR = dirname(fileURLToPath(import.meta.url));
+
+function resolveDistScript(relPath: string) {
+  const direct = join(CLI_DIR, relPath);
+  if (existsSync(direct)) return direct;
+
+  const built = join(CLI_DIR, '..', 'dist', relPath);
+  if (existsSync(built)) return built;
+
+  throw new Error(
+    `Cannot locate ${relPath}. Ensure the package is built (npm run build) before running this command.`
+  );
+}
 
 /* -----------------------------------------------------------------------------
    Helpers & Validation
@@ -159,7 +174,12 @@ program
   .description('🚀 First-time setup wizard')
   .action(async () => {
     const { spawn } = await import('node:child_process');
-    spawn('node', [join(process.cwd(), 'dist/setup.js')], { stdio: 'inherit' });
+    try {
+      const script = resolveDistScript('setup.js');
+      spawn(process.execPath, [script], { stdio: 'inherit' });
+    } catch (e) {
+      error(e instanceof Error ? e.message : String(e));
+    }
   });
 
 program
@@ -167,7 +187,12 @@ program
   .description('🧙 Interactive command builder')
   .action(async () => {
     const { spawn } = await import('node:child_process');
-    spawn('node', [join(process.cwd(), 'dist/wizard.js')], { stdio: 'inherit' });
+    try {
+      const script = resolveDistScript('wizard.js');
+      spawn(process.execPath, [script], { stdio: 'inherit' });
+    } catch (e) {
+      error(e instanceof Error ? e.message : String(e));
+    }
   });
 
 /* -----------------------------------------------------------------------------
@@ -180,7 +205,7 @@ program
   .option('-c, --canister <id>', 'Canister ID')
   .option('--days <n>', 'Predict decay for N days', '30')
   .action(async (cid?: string, user?: string, cmd?: any) => {
-    const opts = cmd?.opts() || {};
+    const opts = ((cmd && typeof cmd.opts === "function") ? cmd.opts() : {});
     const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
     
     if (!user) {
@@ -227,7 +252,7 @@ program
   .option('--webhook <url>', 'Webhook URL for alerts')
   .option('--interval <sec>', 'Check interval in seconds', '60')
   .action(async (cid?: string, cmd?: any) => {
-    const opts = cmd?.opts() || {};
+    const opts = ((cmd && typeof cmd.opts === "function") ? cmd.opts() : {});
     const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
     
     try {
@@ -259,7 +284,7 @@ program
   .option('-c, --canister <id>', 'Canister ID')
   .option('--json', 'Output as JSON')
   .action(async (cid?: string, cmd?: any) => {
-    const opts = cmd?.opts() || {};
+    const opts = ((cmd && typeof cmd.opts === "function") ? cmd.opts() : {});
     const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
     
     try {
@@ -307,7 +332,7 @@ program
   .option('--dry-run', 'Preview without executing')
   .option('--atomic', 'All or nothing execution')
   .action(async (csvFile: string, cmd?: any) => {
-    const opts = cmd?.opts() || {};
+    const opts = ((cmd && typeof cmd.opts === "function") ? cmd.opts() : {});
     const canisterId = validateCanisterId(opts.canister || program.opts().canister);
     
     try {
@@ -352,7 +377,7 @@ program
   .option('--format <type>', 'Output format: json|csv', 'json')
   .option('--output <file>', 'Output file (default: stdout)')
   .action(async (cid?: string, cmd?: any) => {
-    const opts = cmd?.opts() || {};
+    const opts = ((cmd && typeof cmd.opts === "function") ? cmd.opts() : {});
     const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
     
     try {
@@ -397,7 +422,7 @@ program
   .option('-c, --canister <id>', 'Canister ID')
   .option('--user <principal>', 'Analyze specific user behavior')
   .action(async (cid?: string, cmd?: any) => {
-    const opts = cmd?.opts() || {};
+    const opts = ((cmd && typeof cmd.opts === "function") ? cmd.opts() : {});
     const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
     
     try {
@@ -462,7 +487,7 @@ program
   .option('--webhook <url>', 'Forward events to webhook')
   .option('--filter <type>', 'Filter events: award|revoke|decay|topup')
   .action(async (cid?: string, cmd?: any) => {
-    const opts = cmd?.opts() || {};
+    const opts = ((cmd && typeof cmd.opts === "function") ? cmd.opts() : {});
     const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
     
     try {
@@ -531,7 +556,7 @@ program
   .option('-r, --reason <text>', 'Reason for the award')
   .option('-c, --canister <id>', 'Canister ID (overrides default)')
   .action(async (cid?: string, to?: string, amount?: string, cmd?: any) => {
-    const opts = cmd?.opts() || {};
+    const opts = ((cmd && typeof cmd.opts === "function") ? cmd.opts() : {});
     const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
     
     if (!to) {
@@ -819,7 +844,7 @@ program
   .description('💰 Check reputation balance for a user')
   .option('-c, --canister <id>', 'Canister ID (overrides default)')
   .action(async (cid?: string, p?: string, cmd?: any) => {
-    const opts = cmd?.opts() || {};
+    const opts = ((cmd && typeof cmd.opts === "function") ? cmd.opts() : {});
     const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
     
     if (!p) {
@@ -1012,7 +1037,7 @@ program
   .description('🏥 Check canister health and status')
   .option('-c, --canister <id>', 'Canister ID (overrides default)')
   .action(async (cid?: string, cmd?: any) => {
-    const opts = cmd?.opts() || {};
+    const opts = (cmd && typeof cmd.opts === 'function') ? cmd.opts() : {};
     const canisterId = validateCanisterId(cid || opts.canister || program.opts().canister);
     
     try {

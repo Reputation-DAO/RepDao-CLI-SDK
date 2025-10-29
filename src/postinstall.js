@@ -14,8 +14,8 @@ Examples:
   repdao getBalance <cid> <user>                 # Check balance
 
 Need help? Check out:
-  📖 README: https://github.com/reputation-dao/repdao
-  🐛 Issues: https://github.com/reputation-dao/repdao/issues
+  📖 README: https://github.com/Reputation-DAO/RepDao-CLI-SDK
+  🐛 Issues: https://github.com/Reputation-DAO/RepDao-CLI-SDK/issues
 
 Happy reputation building! 🎯
 `);
